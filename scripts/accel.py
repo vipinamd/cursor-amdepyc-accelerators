@@ -6,6 +6,7 @@ or WSL is required.
 
 Phases:
   discover <DUT_IP> [PKTGEN_IP]  Write config/lab.hosts, verify SSH
+  tune [args...]                 Check AMD platform tuning (BIOS/GRUB/power/PCIe)
   install                        Build DPDK + ensure perf/turbostat/ipmitool
   run [--accel ...]              Run benchmarks (delegates to run-accel-benchmark.py)
   report                         Analyze the latest run -> executive summary
@@ -27,13 +28,40 @@ if str(SCRIPTS) not in sys.path:
 
 import _lab_common as lab
 from _lab_common import (
-    CONFIG, expand_home, load_config, log, run_remote, run_remote_script,
-    ssh_pass, sudo, verify_ssh,
+    CONFIG, REPORTS, expand_home, load_config, log, run_remote,
+    run_remote_script, ssh_pass, sudo, verify_ssh,
 )
 
 
 def _py() -> str:
     return sys.executable or "python3"
+
+
+def _tuning_warning(cfg: dict) -> None:
+    """Non-blocking platform-tuning check banner before install/run.
+
+    Runs the read-only checker and prints a one-line verdict so a
+    misconfigured BIOS/GRUB is visible, without failing the phase.
+    """
+    dut = cfg.get("DUT_HOST")
+    if not dut:
+        return
+    try:
+        rc = subprocess.call(
+            [_py(), str(SCRIPTS / "check-platform-tuning.py")],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        verdict = {0: "PASS/WARN", 2: "FAIL"}.get(rc, "unknown")
+        marker = REPORTS / ".latest_tuning"
+        if marker.exists():
+            lines = marker.read_text(encoding="utf-8").splitlines()
+            verdict = lines[3] if len(lines) > 3 else verdict
+        if verdict == "FAIL":
+            log(f"platform tuning: {verdict} - see 'accel.py tune' (continuing anyway)")
+        else:
+            log(f"platform tuning: {verdict}")
+    except Exception as exc:  # noqa: BLE001 - tuning check must never block
+        log(f"platform tuning check skipped ({type(exc).__name__})")
 
 
 # --------------------------------------------------------------------------
@@ -97,6 +125,7 @@ def cmd_install(cfg: dict, args: argparse.Namespace) -> int:
     url = cfg["DPDK_URL"]
     ver = cfg["DPDK_VERSION"]
 
+    _tuning_warning(cfg)
     log("DUT: ensuring build + measurement tools")
     deps = ("meson ninja-build build-essential python3-pyelftools libnuma-dev "
             "libssl-dev pkg-config curl linux-tools-common linux-tools-generic "
@@ -135,6 +164,7 @@ echo DPDK_BUILD_DONE
 # run / report / compare / email
 # --------------------------------------------------------------------------
 def cmd_run(cfg: dict, args: argparse.Namespace) -> int:
+    _tuning_warning(cfg)
     cmd = [_py(), str(SCRIPTS / "run-accel-benchmark.py")]
     if args.accel:
         cmd += ["--accel", args.accel]
@@ -153,6 +183,10 @@ def cmd_report(cfg: dict, args: argparse.Namespace) -> int:
 
 def cmd_compare(cfg: dict, args: argparse.Namespace) -> int:
     return subprocess.call([_py(), str(SCRIPTS / "compare-accel-runs.py"), *args.compare_args])
+
+
+def cmd_tune(cfg: dict, args: argparse.Namespace) -> int:
+    return subprocess.call([_py(), str(SCRIPTS / "check-platform-tuning.py"), *args.tune_args])
 
 
 def cmd_email(cfg: dict, args: argparse.Namespace) -> int:
@@ -203,6 +237,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("compare", help="cross-run comparison (passes args through)")
     p.add_argument("compare_args", nargs=argparse.REMAINDER)
 
+    p = sub.add_parser("tune", help="AMD platform tuning check (passes args through)")
+    p.add_argument("tune_args", nargs=argparse.REMAINDER)
+
     sub.add_parser("email", help="analyze + send summary via SMTP")
 
     p = sub.add_parser("all", help="discover -> install -> run -> report")
@@ -217,6 +254,8 @@ def main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "compare":
         return subprocess.call([_py(), str(SCRIPTS / "compare-accel-runs.py"), *argv[1:]])
+    if argv and argv[0] == "tune":
+        return subprocess.call([_py(), str(SCRIPTS / "check-platform-tuning.py"), *argv[1:]])
 
     args = build_parser().parse_args()
     cfg = load_config()
@@ -226,6 +265,7 @@ def main() -> int:
         "run": cmd_run,
         "report": cmd_report,
         "compare": cmd_compare,
+        "tune": cmd_tune,
         "email": cmd_email,
         "all": cmd_all,
     }

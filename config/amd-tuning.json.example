@@ -1,0 +1,194 @@
+{
+  "_comment": "AMD EPYC platform tuning profiles per the DPDK AMD guide (https://doc.dpdk.org/guides/linux_gsg/amd_platform.html) and the AMD EPYC tuning guides it links. Copy to config/amd-tuning.json to customise. Used by scripts/check-platform-tuning.py. BIOS values are starting points from the AMD tuning guides; refine per your workload (e.g. NPS1 vs NPS4, SMT on/off). GRUB 'required' entries are matched as substrings of /proc/cmdline. apply_base/isolation_template are only used with --apply-grub; {hugepages} and {isolcpus} are filled from TUNE_HUGEPAGES / TUNE_ISOLCPUS in lab.hosts.",
+
+  "cpu_model_map": [
+    {"match": "9[0-9]{2}5", "family": "turin"},
+    {"match": "97[0-9]4", "family": "bergamo"},
+    {"match": "8[0-9]{2}4", "family": "siena"},
+    {"match": "9[0-9]{2}4", "family": "genoa"},
+    {"match": "7[0-9]{2}3", "family": "milan"},
+    {"match": "7[0-9]{2}2", "family": "rome"}
+  ],
+
+  "common": {
+    "bios_manual_checklist": [
+      {"setting": "Determinism Control", "value": "Manual"},
+      {"setting": "Determinism Slider / Enable", "value": "Performance"},
+      {"setting": "Global C-state Control", "value": "Disabled"},
+      {"setting": "DF C-States", "value": "Disabled"},
+      {"setting": "APBDIS", "value": "1"},
+      {"setting": "Fixed SOC P-state", "value": "P0"},
+      {"setting": "Core Performance Boost", "value": "Enabled"},
+      {"setting": "SMT Control", "value": "Disabled (deterministic) or Enabled (max threads)"},
+      {"setting": "NUMA nodes per socket (NPS)", "value": "NPS1 (simplest) or NPS4 (max memory BW)"},
+      {"setting": "Memory Power Down Enable", "value": "Disabled"},
+      {"setting": "TSME (memory encryption)", "value": "Disabled"},
+      {"setting": "Enhanced / Preferred IO Device", "value": "Enabled (NIC root port)"},
+      {"setting": "PCIe Ten Bit Tag", "value": "Enabled"},
+      {"setting": "IOMMU", "value": "Enabled"}
+    ],
+    "bios_redfish": {
+      "Determinism": "Performance",
+      "Smt": "Disabled",
+      "GlobalCState": "Disabled",
+      "DfCStates": "Disabled",
+      "CorePerformanceBoost": "Enabled",
+      "NumaNodesPerSocket": "NPS1",
+      "Tsme": "Disabled",
+      "Iommu": "Enabled",
+      "ApbDis": "1"
+    }
+  },
+
+  "families": {
+    "turin": {
+      "label": "AMD EPYC 9005 (Turin / Turin Dense, Zen5/Zen5c)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn", "note": "SMT off gives deterministic per-core DPDK; on for max lcores"},
+          "nps": {"expect": "1", "severity": "warn", "note": "nodes-per-socket; NPS1 simplest, NPS4 for memory bandwidth"},
+          "max_cstate": {"expect": "0", "severity": "fail", "note": "deep C-states add wakeup latency"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail", "note": "needed for vfio-pci device binding"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "warn", "note": "rte_power on EPYC needs amd_pstate passive (23.11+); conflicts with processor.max_cstate=0 for raw-throughput runs"},
+        "hsmp": {"expect": "loaded", "severity": "info", "note": "amd_hsmp module needed for rte_power_uncore (25.03+)"}
+      },
+      "pcie": {"min_speed_gts": 32.0, "min_width": 16, "note": "Gen5 x16 for 400G NIC / accelerators"}
+    },
+
+    "bergamo": {
+      "label": "AMD EPYC 97x4 (Bergamo, Zen4c)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn"},
+          "nps": {"expect": "1", "severity": "warn"},
+          "max_cstate": {"expect": "0", "severity": "fail"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "warn"},
+        "hsmp": {"expect": "loaded", "severity": "info"}
+      },
+      "pcie": {"min_speed_gts": 32.0, "min_width": 16, "note": "Gen5 x16"}
+    },
+
+    "genoa": {
+      "label": "AMD EPYC 9004 (Genoa, Zen4)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn"},
+          "nps": {"expect": "1", "severity": "warn"},
+          "max_cstate": {"expect": "0", "severity": "fail"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "warn"},
+        "hsmp": {"expect": "loaded", "severity": "info"}
+      },
+      "pcie": {"min_speed_gts": 32.0, "min_width": 16, "note": "Gen5 x16"}
+    },
+
+    "siena": {
+      "label": "AMD EPYC 8004 (Siena, Zen4c, single socket)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn"},
+          "nps": {"expect": "1", "severity": "info", "note": "single socket"},
+          "max_cstate": {"expect": "0", "severity": "fail"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "warn"},
+        "hsmp": {"expect": "loaded", "severity": "info"}
+      },
+      "pcie": {"min_speed_gts": 32.0, "min_width": 16, "note": "Gen5 x16"}
+    },
+
+    "milan": {
+      "label": "AMD EPYC 7003 (Milan, Zen3)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn"},
+          "nps": {"expect": "1", "severity": "warn", "note": "NPS4 for memory bandwidth on dual-socket"},
+          "max_cstate": {"expect": "0", "severity": "fail"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "warn", "note": "amd_pstate supported from 23.11 on Milan+"},
+        "hsmp": {"expect": "loaded", "severity": "info"}
+      },
+      "pcie": {"min_speed_gts": 16.0, "min_width": 16, "note": "Gen4 x16"}
+    },
+
+    "rome": {
+      "label": "AMD EPYC 7002 (Rome, Zen2)",
+      "grub": {
+        "required": ["amd_iommu=on", "iommu=pt", "hugepagesz=1G", "pcie_aspm=off", "processor.max_cstate=0"],
+        "apply_base": "default_hugepagesz=1G hugepagesz=1G hugepages={hugepages} amd_iommu=on iommu=pt processor.max_cstate=0 numa_balancing=disable transparent_hugepage=never nosoftlockup nmi_watchdog=0 nohz=on pci=norom pcie_aspm=off tsc=reliable",
+        "isolation_template": "isolcpus={isolcpus} nohz_full={isolcpus} rcu_nocbs={isolcpus} rcu_nocb_poll"
+      },
+      "bios": {
+        "observable": {
+          "smt": {"expect": "off", "severity": "warn"},
+          "nps": {"expect": "1", "severity": "warn", "note": "NPS4 for memory bandwidth on dual-socket"},
+          "max_cstate": {"expect": "0", "severity": "fail"},
+          "boost": {"expect": "1", "severity": "warn"},
+          "iommu": {"expect": "on", "severity": "fail"},
+          "x2apic": {"expect": "on", "severity": "warn"},
+          "governor": {"expect": "performance", "severity": "warn"}
+        }
+      },
+      "power": {
+        "amd_pstate": {"expect": "passive", "severity": "info", "note": "amd_pstate may be unsupported on Rome; use acpi-cpufreq performance governor"},
+        "hsmp": {"expect": "loaded", "severity": "info"}
+      },
+      "pcie": {"min_speed_gts": 16.0, "min_width": 16, "note": "Gen4 x16"}
+    }
+  }
+}

@@ -112,6 +112,10 @@ def load_workloads() -> dict:
     return _load_json_config("workloads.json")
 
 
+def load_tuning() -> dict:
+    return _load_json_config("amd-tuning.json")
+
+
 def enabled_accelerators() -> dict:
     return {k: v for k, v in load_accelerators().items() if v.get("enabled")}
 

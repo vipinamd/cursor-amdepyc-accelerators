@@ -21,6 +21,17 @@ python scripts/accel.py discover 10.0.0.10         # writes config/lab.hosts
 python scripts/accel.py install                    # builds DPDK + tools
 ```
 
+## 1a. Check platform tuning
+
+```bash
+python scripts/accel.py tune                       # BIOS/GRUB/power/PCIe (read-only)
+python scripts/accel.py tune --bios-redfish        # also read actual BIOS via BMC
+python scripts/accel.py tune --apply-grub --reboot # apply recommended GRUB + reboot
+```
+
+See [TUNING.md](TUNING.md) for the per-SoC profiles and the manual BIOS
+checklist.
+
 ## 2. Enable accelerators
 
 Edit `config/accelerators.json`: set `"enabled": true` and the `bdf`/`devargs`

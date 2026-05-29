@@ -23,6 +23,12 @@ CTRL_LCORE=1
 MAX_WORKER_LCORES=8
 HUGEPAGE_MODE=2m
 
+# --- Platform tuning (scripts/accel.py tune; only used with --apply-grub) ---
+# 1G hugepages to reserve and the isolated worker-core range for the
+# recommended GRUB line. Leave TUNE_ISOLCPUS empty to skip core isolation.
+TUNE_HUGEPAGES=64
+TUNE_ISOLCPUS=
+
 # --- Power measurement ---
 # rapl | bmc | both | synthetic   (synthetic = no hardware, for dry-run/demo)
 POWER_SOURCE=both

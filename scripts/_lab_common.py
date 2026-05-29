@@ -50,6 +50,8 @@ DEFAULTS = {
     "CTRL_LCORE": "1",
     "MAX_WORKER_LCORES": "8",
     "HUGEPAGE_MODE": "2m",
+    "TUNE_HUGEPAGES": "64",
+    "TUNE_ISOLCPUS": "",
     "POWER_SOURCE": "both",
     "POWER_INTERVAL": "1",
     "PROFILER": "perf",
@@ -170,3 +172,29 @@ def verify_ssh(cfg: dict[str, str], host: str) -> tuple[bool, str]:
         return code == 0, out.strip()
     except Exception as exc:  # noqa: BLE001 - report any connection failure
         return False, str(exc)
+
+
+def reboot_host(host: str, user: str, pw: str) -> None:
+    """Issue a reboot; the SSH connection drops, which is expected."""
+    try:
+        run_remote(host, user, pw, sudo(pw, "shutdown -r now") + " || true", 20)
+    except Exception as exc:  # noqa: BLE001 - connection drops on reboot
+        log(f"  {host}: reboot issued (connection dropped: {type(exc).__name__})")
+
+
+def wait_for_ssh(host: str, user: str, pw: str, timeout_s: int = 420,
+                 settle_s: int = 30) -> bool:
+    """Wait for a host to come back after reboot. Returns True when SSH works."""
+    deadline = time.time() + timeout_s
+    time.sleep(settle_s)  # give the box a moment to actually go down first
+    while time.time() < deadline:
+        try:
+            code, out = run_remote(host, user, pw, "uptime", 12)
+            if code == 0:
+                tail = out.strip().splitlines()[-1] if out.strip() else "ok"
+                log(f"  {host}: back up - {tail}")
+                return True
+        except Exception:  # noqa: BLE001 - host still down
+            pass
+        time.sleep(10)
+    return False
