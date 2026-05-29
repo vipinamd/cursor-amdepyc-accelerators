@@ -1,0 +1,37 @@
+{
+  "_comment": "Copy to config/workloads.json and edit. Keyed by tool name (see plugins/). 'thread_sweep' drives the CPU-threads-to-saturate measurement: the runner repeats the workload at each worker-core count and finds the saturation knee. 'duration_sec' is per data point.",
+
+  "memcpy_ref": {
+    "buffer_bytes": [4096, 65536, 1048576],
+    "duration_sec": 3,
+    "thread_sweep": [1, 2, 4, 8],
+    "saturation_epsilon": 0.05
+  },
+
+  "dma_perf": {
+    "kind": "mem2mem",
+    "transfer_sizes": [64, 512, 4096, 65536],
+    "duration_sec": 30,
+    "thread_sweep": [1, 2, 4, 8],
+    "ring_size": 1024,
+    "saturation_epsilon": 0.05
+  },
+
+  "crypto_perf": {
+    "optype": "cipher-then-auth",
+    "cipher_algo": "aes-cbc",
+    "auth_algo": "sha2-256-hmac",
+    "buffer_sizes": [64, 512, 1024, 2048],
+    "duration_sec": 30,
+    "thread_sweep": [1, 2, 4, 8],
+    "saturation_epsilon": 0.05
+  },
+
+  "eventdev": {
+    "test": "perf_queue",
+    "nb_flows": 1024,
+    "duration_sec": 30,
+    "thread_sweep": [1, 2, 4, 8],
+    "saturation_epsilon": 0.05
+  }
+}

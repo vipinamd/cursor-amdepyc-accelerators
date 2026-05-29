@@ -1,0 +1,34 @@
+Accelerator benchmark summary (TEMPLATE)
+==========================================
+
+This is a TEMPLATE summary illustrating the report the framework emits after a run. Metric columns show <measured> placeholders; a real run fills them from DPDK dma-perf / crypto-perf plus RAPL/BMC power and the CPU-threads-to-saturate sweep.
+
+RUN CONTEXT
++-----------------+--------------------------------------+
+| Item            | Value                                |
++-----------------+--------------------------------------+
+| Report type     | TEMPLATE (placeholders, no lab data) |
+| Framework       | cursor-amdepyc-accelerators          |
+| DUT             | <dut-host>                           |
+| CPU / SoC       | <cpu-model> / <soc>                  |
+| Power source    | RAPL (CPU pkg/DRAM) + BMC (node)     |
+| Profiler        | perf / AMD uProf / Intel VTune       |
+| Generated (UTC) | 2026-05-29 04:23 UTC                 |
++-----------------+--------------------------------------+
+
+ACCELERATOR COMPARISON (placeholders)
++-------------+-----------+-------------+-------------+-------------+-------------------+------------+------------+--------------+---------------+
+| Accelerator | Vendor    | Tool        | DPDK driver | Status      | Throughput (Gbps) | Pkg W      | Gbps/W     | Cores-to-sat | Offload ratio |
++-------------+-----------+-------------+-------------+-------------+-------------------+------------+------------+--------------+---------------+
+| dsa         | intel     | dma_perf    | dmadev/idxd | implemented | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
+| qat         | intel     | crypto_perf | crypto/qat  | implemented | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
+| dlb         | intel     | eventdev    | event/dlb2  | scaffolded  | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
+| sdxi        | amd       | dma_perf    | dmadev/sdxi | scaffolded  | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
+| sdci        | amd       | dma_perf    |             | scaffolded  | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
+| memcpy      | reference | memcpy_ref  | n/a         | implemented | <measured>        | <measured> | <measured> | <measured>   | <measured>    |
++-------------+-----------+-------------+-------------+-------------+-------------------+------------+------------+--------------+---------------+
+
+Metrics per run: throughput, ops/s, latency; RAPL pkg/DRAM + BMC node
+watts + energy; cores-to-saturate + offload ratio; Gbps/W and Gbps/core;
+perf/uProf/VTune hotspots.
+

@@ -1,0 +1,18 @@
+# Copy to config/report-email.conf and edit. NEVER commit the real file.
+# Used by scripts/send-report-smtp.py.
+
+# Recipients (comma-separated), optional CC, and sender
+TO=you@example.com
+CC=
+FROM=accel-bench@example.com
+
+# Set DRY_RUN=0 to actually send; default prints the message only.
+DRY_RUN=1
+
+# Direct SMTP relay (preferred path)
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=25
+SMTP_TLS=1
+SMTP_USER=
+# Set the password locally only (do not commit):
+SMTP_PASS=

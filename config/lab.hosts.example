@@ -1,0 +1,36 @@
+# Copy to config/lab.hosts and edit (or run: python scripts/accel.py discover <DUT_IP>).
+# KEY=value, '#' comments.
+
+# --- Device-under-test (where the accelerators live) ---
+DUT_HOST=10.0.0.10
+DUT_BMC_IP=10.0.1.10
+# CPU vendor/SoC for reporting: genoa | bergamo | turin | sapphirerapids | emeraldrapids
+CPU_SOC=turin
+
+# Optional separate traffic/load generator (only some workloads need it)
+PKTGEN_HOST=
+
+# --- DPDK install (built by `accel.py install`) ---
+DPDK_VERSION=26.03
+DPDK_URL=https://fast.dpdk.org/rel/dpdk-26.03.tar.xz
+ACCEL_BASE=~/accel-bench
+DPDK_DIR=~/accel-bench/dpdk-26.03
+DPDK_BUILD=build
+
+# --- Default lcore layout for the thread-to-saturate sweep ---
+# The sweep walks 1..MAX_WORKER_LCORES worker cores driving the engine.
+CTRL_LCORE=1
+MAX_WORKER_LCORES=8
+HUGEPAGE_MODE=2m
+
+# --- Power measurement ---
+# rapl | bmc | both | synthetic   (synthetic = no hardware, for dry-run/demo)
+POWER_SOURCE=both
+# Sampling interval in seconds for RAPL/BMC pollers
+POWER_INTERVAL=1
+
+# --- Profiler ---
+# perf | uprof | vtune | none
+PROFILER=perf
+# Sampling frequency (Hz) for perf record
+PROFILER_FREQ=997

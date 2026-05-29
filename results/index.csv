@@ -1,0 +1,1 @@
+run_id,timestamp,git_commit,host,cpu_model,soc,accelerator,tool,workload,config_hash,threads,op_size,duration_sec,throughput_gbps,ops_per_sec,latency_us_avg,latency_us_p99,cpu_pkg_w_avg,dram_w_avg,node_w_avg,energy_j,cores_to_saturate,throughput_per_watt,throughput_per_core,verdict,json_path

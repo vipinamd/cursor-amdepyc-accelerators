@@ -1,0 +1,7 @@
+# cursor-amdepyc-accelerators orchestrator dependencies (Windows + Linux).
+# Install:  pip install -r requirements.txt
+#
+# Only paramiko is required: all remote access (DUT bring-up, benchmark
+# runs, power/profiler collection) goes through SSH so the framework runs
+# natively in Windows PowerShell and on Linux without sshpass/WSL.
+paramiko>=3.4,<4

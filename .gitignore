@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Local secrets / host inventory (never commit real creds or lab IPs)
+config/lab.secrets
+config/lab.hosts
+config/report-email.conf
+config/accelerators.json
+config/workloads.json
+
+# Result store internal markers (the JSON runs + index.csv ARE committed)
+results/reports/.latest_*
+results/.latest_*
+results/bundles/*/
+
+# Profiler artifacts are large and machine-specific; keep them local.
+# (Parsed hotspot summaries are stored inside the per-run JSON instead.)
+*.perf
+perf.data*
+*.amduprof
+*.vtune
+r0*/
+
+# OS noise
+.DS_Store
+Thumbs.db

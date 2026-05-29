@@ -1,0 +1,76 @@
+{
+  "_comment": "Copy to config/accelerators.json and edit. Maps each accelerator to a runner plugin (tool), its DPDK driver and PCI BDF/devargs. 'enabled' gates which engines a run/compare touches. 'remote' false means the orchestrator runs it locally (no SSH) -- used by the synthetic memcpy baseline.",
+
+  "memcpy": {
+    "enabled": true,
+    "vendor": "reference",
+    "tool": "memcpy_ref",
+    "remote": false,
+    "notes": "Synthetic in-process memmove baseline; needs no hardware. Validates the full pipeline (run -> store -> analyze -> compare)."
+  },
+
+  "dsa": {
+    "enabled": false,
+    "vendor": "intel",
+    "tool": "dma_perf",
+    "remote": true,
+    "dpdk_driver": "dmadev/idxd",
+    "kernel_driver": "idxd",
+    "bdf": "0000:6a:01.0",
+    "devargs": "",
+    "setup": "accel-config to configure work queues; bind via dpdk-devbind or use vfio",
+    "notes": "Intel Data Streaming Accelerator via DPDK dmadev (idxd)."
+  },
+
+  "qat": {
+    "enabled": false,
+    "vendor": "intel",
+    "tool": "crypto_perf",
+    "remote": true,
+    "dpdk_driver": "crypto/qat",
+    "kernel_driver": "qat_4xxx",
+    "bdf": "0000:f7:00.0",
+    "devargs": "",
+    "setup": "enable VFs via qat sysfs; bind VFs to vfio-pci",
+    "notes": "Intel QuickAssist crypto/compression via DPDK crypto_perf."
+  },
+
+  "dlb": {
+    "enabled": false,
+    "vendor": "intel",
+    "tool": "eventdev",
+    "remote": true,
+    "dpdk_driver": "event/dlb2",
+    "kernel_driver": "dlb2",
+    "bdf": "0000:73:00.0",
+    "devargs": "",
+    "setup": "bind dlb2 PF/VF to vfio-pci",
+    "notes": "Intel Dynamic Load Balancer via dpdk-test-eventdev. SCAFFOLDED."
+  },
+
+  "sdxi": {
+    "enabled": false,
+    "vendor": "amd",
+    "tool": "dma_perf",
+    "remote": true,
+    "dpdk_driver": "dmadev/sdxi",
+    "kernel_driver": "",
+    "bdf": "",
+    "devargs": "",
+    "setup": "platform-dependent; see docs/ACCELERATORS.md",
+    "notes": "AMD EPYC Smart Data Accelerator Interface (DMA). SCAFFOLDED."
+  },
+
+  "sdci": {
+    "enabled": false,
+    "vendor": "amd",
+    "tool": "dma_perf",
+    "remote": true,
+    "dpdk_driver": "",
+    "kernel_driver": "",
+    "bdf": "",
+    "devargs": "",
+    "setup": "platform-dependent; see docs/ACCELERATORS.md",
+    "notes": "AMD EPYC Smart Data Cache Injection. SCAFFOLDED."
+  }
+}
