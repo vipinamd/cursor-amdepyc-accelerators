@@ -174,6 +174,10 @@ def cmd_run(cfg: dict, args: argparse.Namespace) -> int:
         cmd += ["--max-threads", str(args.max_threads)]
     if args.force_stubs:
         cmd += ["--force-stubs"]
+    if getattr(args, "fix", False):
+        cmd += ["--fix"]
+    if getattr(args, "skip_sanity", False):
+        cmd += ["--skip-sanity"]
     return subprocess.call(cmd)
 
 
@@ -187,6 +191,10 @@ def cmd_compare(cfg: dict, args: argparse.Namespace) -> int:
 
 def cmd_tune(cfg: dict, args: argparse.Namespace) -> int:
     return subprocess.call([_py(), str(SCRIPTS / "check-platform-tuning.py"), *args.tune_args])
+
+
+def cmd_preflight(cfg: dict, args: argparse.Namespace) -> int:
+    return subprocess.call([_py(), str(SCRIPTS / "check-setup-sanity.py"), *args.preflight_args])
 
 
 def cmd_email(cfg: dict, args: argparse.Namespace) -> int:
@@ -209,7 +217,8 @@ def cmd_all(cfg: dict, args: argparse.Namespace) -> int:
         return rc
     cfg = load_config()
     cmd_install(cfg, argparse.Namespace())
-    cmd_run(cfg, argparse.Namespace(accel=None, duration=None, max_threads=None, force_stubs=False))
+    cmd_run(cfg, argparse.Namespace(accel=None, duration=None, max_threads=None,
+                                    force_stubs=False, fix=False, skip_sanity=False))
     cmd_report(cfg, argparse.Namespace())
     return 0
 
@@ -231,6 +240,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--duration", type=int)
     p.add_argument("--max-threads", type=int)
     p.add_argument("--force-stubs", action="store_true")
+    p.add_argument("--fix", action="store_true", help="remediate setup-sanity blockers")
+    p.add_argument("--skip-sanity", action="store_true", help="skip setup-sanity preflight")
 
     sub.add_parser("report", help="analyze latest run -> executive summary")
 
@@ -239,6 +250,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("tune", help="AMD platform tuning check (passes args through)")
     p.add_argument("tune_args", nargs=argparse.REMAINDER)
+
+    p = sub.add_parser("preflight", help="setup sanity check (passes args through)")
+    p.add_argument("preflight_args", nargs=argparse.REMAINDER)
 
     sub.add_parser("email", help="analyze + send summary via SMTP")
 
@@ -256,6 +270,8 @@ def main() -> int:
         return subprocess.call([_py(), str(SCRIPTS / "compare-accel-runs.py"), *argv[1:]])
     if argv and argv[0] == "tune":
         return subprocess.call([_py(), str(SCRIPTS / "check-platform-tuning.py"), *argv[1:]])
+    if argv and argv[0] == "preflight":
+        return subprocess.call([_py(), str(SCRIPTS / "check-setup-sanity.py"), *argv[1:]])
 
     args = build_parser().parse_args()
     cfg = load_config()
@@ -266,6 +282,7 @@ def main() -> int:
         "report": cmd_report,
         "compare": cmd_compare,
         "tune": cmd_tune,
+        "preflight": cmd_preflight,
         "email": cmd_email,
         "all": cmd_all,
     }

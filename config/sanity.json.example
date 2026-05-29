@@ -1,0 +1,14 @@
+{
+  "_comment": "Setup sanity preflight thresholds for scripts/check-setup-sanity.py and the pre-run gate in run-accel-benchmark.py. Copy to config/sanity.json to customise. The toolchain list and per-tool app binaries are informational (the checker has built-in defaults); min_free_hugepages and vfio_driver are read by the evaluator.",
+
+  "min_free_hugepages": 1,
+  "vfio_driver": "vfio-pci",
+
+  "toolchain": ["gcc", "meson", "ninja", "pkg-config"],
+  "tool_app": {
+    "dma_perf": "dpdk-test-dma-perf",
+    "crypto_perf": "dpdk-test-crypto-perf",
+    "eventdev": "dpdk-test-eventdev",
+    "memcpy_ref": null
+  }
+}

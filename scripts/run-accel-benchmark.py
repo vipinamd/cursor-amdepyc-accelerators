@@ -12,6 +12,8 @@ Usage:
   python run-accel-benchmark.py --accel memcpy  # one accelerator
   python run-accel-benchmark.py --accel dsa,qat --duration 30
   python run-accel-benchmark.py --force-stubs   # also run scaffolded tools
+  python run-accel-benchmark.py --fix           # remediate setup-sanity blockers
+  python run-accel-benchmark.py --skip-sanity   # bypass the preflight gate
 """
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import _accel_common as store
-from _lab_common import load_config, log
+import _sanity as sanity_lib
+import _tuning as tuning_lib
+from _lab_common import load_config, log, reboot_host, ssh_pass, wait_for_ssh
 from plugins import get_plugin
 from power import make_sampler
 from profilers import make_profiler
@@ -78,8 +82,78 @@ def _offload_ratio(sweep: list[dict], headline: dict) -> float:
     return round((headline["throughput_gbps"] / one["throughput_gbps"]) / cores, 4)
 
 
+def _tuning_snapshot(cfg: dict, tuning_cfg: dict, host: str,
+                     cache: dict) -> dict:
+    """Capture a host-level tuning snapshot once per host (cached)."""
+    if not tuning_cfg or not host or host == "local":
+        return {}
+    if host in cache:
+        return cache[host]
+    snap: dict = {}
+    try:
+        snap = tuning_lib.snapshot(
+            cfg, tuning_cfg, host, cfg["SSH_USER"], ssh_pass(cfg, host), [])
+        log(f"  platform tuning snapshot: {snap.get('family')} "
+            f"-> {snap.get('verdict')} "
+            f"({tuning_lib.diff_count(snap.get('checks', []))} diff vs guide)")
+    except Exception as exc:  # noqa: BLE001 - tuning capture must not fail the run
+        log(f"  platform tuning snapshot skipped ({type(exc).__name__})")
+    cache[host] = snap
+    return snap
+
+
+def _setup_gate(cfg: dict, accel: str, accel_cfg: dict, tool: str, host: str,
+                tuning_snap: dict, tuning_cfg: dict, sanity_cfg: dict,
+                fix: bool) -> tuple[dict, dict, bool]:
+    """Run the setup sanity preflight for one accelerator.
+
+    Returns (setup_record, refreshed_tuning_snap, proceed). When a blocker
+    remains (no --fix, or still blocked after remediation) proceed is False
+    and the caller must skip this accelerator.
+    """
+    user, pw = cfg["SSH_USER"], ssh_pass(cfg, host)
+    setup = sanity_lib.snapshot(cfg, sanity_cfg, accel, accel_cfg, tool,
+                                host, user, pw, tuning_snap)
+    nblock = sanity_lib.blocker_count(setup["rows"])
+    log(f"  setup sanity: {setup['verdict']} ({nblock} blocker(s), "
+        f"{sanity_lib.diff_count(setup['rows'])} issue(s))")
+    if not setup["blocker"]:
+        return setup, tuning_snap, True
+
+    for r in setup["rows"]:
+        if r["blocker"] and r["status"] == "FAIL":
+            log(f"    BLOCKER {r['category']}/{r['item']}: "
+                f"{r['remediation'] or 'see report'}")
+    if not fix:
+        log(f"  SKIP {accel}: setup blockers present (use --fix to remediate)")
+        return setup, tuning_snap, False
+
+    applied, reboot_needed = sanity_lib.remediate(
+        setup["rows"], cfg, accel_cfg, tuning_snap, tuning_cfg, host, user, pw)
+    if reboot_needed:
+        log(f"  rebooting {host} to activate GRUB changes")
+        reboot_host(host, user, pw)
+        if not wait_for_ssh(host, user, pw):
+            log(f"  {host} did not return within timeout")
+        try:
+            tuning_snap = tuning_lib.snapshot(cfg, tuning_cfg, host, user, pw, [])
+        except Exception:  # noqa: BLE001 - best-effort refresh
+            pass
+    setup = sanity_lib.snapshot(cfg, sanity_cfg, accel, accel_cfg, tool,
+                                host, user, pw, tuning_snap)
+    setup["remediated"] = applied
+    setup["rebooted"] = reboot_needed
+    if setup["blocker"]:
+        log(f"  SKIP {accel}: setup still blocked after --fix")
+        return setup, tuning_snap, False
+    log(f"  setup sanity after --fix: {setup['verdict']}")
+    return setup, tuning_snap, True
+
+
 def run_one(cfg: dict, accel: str, accel_cfg: dict, wl: dict,
-            duration: int | None, max_threads: int | None) -> list[Path]:
+            duration: int | None, max_threads: int | None,
+            tuning_cfg: dict, tuning_cache: dict, sanity_cfg: dict,
+            fix: bool, skip_sanity: bool) -> list[Path]:
     tool = accel_cfg["tool"]
     plugin = get_plugin(tool)
     remote = bool(accel_cfg.get("remote", plugin.remote))
@@ -92,6 +166,17 @@ def run_one(cfg: dict, accel: str, accel_cfg: dict, wl: dict,
 
     note = plugin.prepare(cfg, accel_cfg)
     log(f"=== {accel} ({tool}) === {note}")
+
+    host = cfg.get("DUT_HOST", "local") if remote else "local"
+    tuning_snap = _tuning_snapshot(cfg, tuning_cfg, host, tuning_cache)
+
+    setup: dict = {}
+    if remote and not skip_sanity and host and host != "local":
+        setup, tuning_snap, proceed = _setup_gate(
+            cfg, accel, accel_cfg, tool, host, tuning_snap, tuning_cfg,
+            sanity_cfg, fix)
+        if not proceed:
+            return []
 
     stored: list[Path] = []
     for op_size in _size_list(tool, wl):
@@ -106,11 +191,14 @@ def run_one(cfg: dict, accel: str, accel_cfg: dict, wl: dict,
 
         record = store.new_run_record(
             accelerator=accel, tool=tool, workload=tool,
-            host=cfg.get("DUT_HOST", "local") if remote else "local",
-            cpu_model=cfg.get("CPU_SOC", ""), soc=cfg.get("CPU_SOC", ""),
+            host=host,
+            cpu_model=tuning_snap.get("model") or cfg.get("CPU_SOC", ""),
+            soc=tuning_snap.get("family") or cfg.get("CPU_SOC", ""),
             knobs=knobs,
         )
         record["profile"]["profiler"] = profiler.name
+        record["tuning"] = tuning_snap
+        record["setup"] = setup
 
         sampler.start()
         profiler.start(bundle)
@@ -168,11 +256,18 @@ def main() -> int:
     ap.add_argument("--max-threads", type=int, help="cap the thread sweep")
     ap.add_argument("--force-stubs", action="store_true",
                     help="also run scaffolded (unimplemented) tools")
+    ap.add_argument("--fix", action="store_true",
+                    help="remediate setup-sanity blockers (install/build/GRUB/hugepages/bind), reboot if needed, re-check")
+    ap.add_argument("--skip-sanity", action="store_true",
+                    help="skip the setup-sanity preflight gate")
     args = ap.parse_args()
 
     cfg = load_config()
     accelerators = store.load_accelerators()
     workloads = store.load_workloads()
+    tuning_cfg = store.load_tuning()
+    sanity_cfg = store.load_sanity()
+    tuning_cache: dict = {}
 
     if args.accel:
         names = [n.strip() for n in args.accel.split(",") if n.strip()]
@@ -195,7 +290,8 @@ def main() -> int:
             continue
         wl = workloads.get(tool, {})
         all_stored.extend(
-            run_one(cfg, name, accel_cfg, wl, args.duration, args.max_threads)
+            run_one(cfg, name, accel_cfg, wl, args.duration, args.max_threads,
+                    tuning_cfg, tuning_cache, sanity_cfg, args.fix, args.skip_sanity)
         )
 
     log(f"done: {len(all_stored)} run record(s) stored")

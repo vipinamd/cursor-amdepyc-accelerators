@@ -25,6 +25,11 @@ Power
  `amd_pstate` driver mode (`passive` is required for `rte_power` on EPYC,
  23.11+) and the `amd_hsmp` module (needed for `rte_power_uncore`, 25.03+).
 
+System
+ Kernel version (info), transparent hugepages (expect `never`), reserved 1G
+ hugepages (expect `>=1`), and the active `tuned-adm` profile (recommend
+ `accelerator-performance` / `throughput-performance`).
+
 PCIe
  Link speed and width (`lspci -vv` `LnkSta`) for accelerator/NIC BDFs,
  compared to the family's minimum (Gen4 x16 / Gen5 x16).
@@ -60,6 +65,18 @@ python scripts/accel.py tune --apply-grub --reboot
 
 `install` and `run` also print a non-blocking one-line tuning verdict so a
 misconfigured box is visible without failing the phase.
+
+## Captured per run and shown in the summary
+
+For remote runs, `run-accel-benchmark.py` captures a host-level tuning snapshot
+once (cached per host) using the same probe and stores it in the run record
+under `tuning` (family, verdict, and the checks vs the guide). The executive
+summary ([REPORTING.md](REPORTING.md)) renders this as a "Platform tuning vs AMD
+guide" table with the differences highlighted, so every report shows the tuning
+state that was in effect during that run. Local/synthetic runs skip capture and
+the summary shows `not captured (local run)`. The per-run snapshot is
+host-level (no PCIe link check); use `accel.py tune --pcie ...` for device link
+verification.
 
 ## GRUB apply
 

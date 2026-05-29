@@ -17,8 +17,29 @@ Outputs three files under `results/reports/`:
 | `accel_summary_<ts>.html` | HTML tables for email clients |
 
 The summary covers overview, performance, power, CPU efficiency (cores to
-saturate + offload ratio), the thread sweep, profiler hotspots, a verdict, a
-short table of recent runs, and recommended next steps.
+saturate + offload ratio), a **Setup sanity** table, a **Platform tuning vs AMD
+guide** table, the thread sweep, profiler hotspots, a verdict, a short table of
+recent runs, and recommended next steps.
+
+### Setup sanity
+
+For remote runs the runner captures a setup-sanity snapshot before the sweep
+(see [SANITY.md](SANITY.md)) and stores it in `record["setup"]`. The summary
+renders it as a `Category | Item | Expected | Observed | Status` table with a
+one-line verdict, e.g. `Setup: FAIL - 2 blocker(s), 3 issue(s)`. Non-PASS rows
+are highlighted and hard blockers are tagged `(blocker)`; when `--fix` ran, an
+"Applied remediations" list is included and a next-step points to
+`accel.py preflight --fix`. Local runs show `not captured (local run)`.
+
+### Platform tuning vs AMD guide
+
+For remote runs, the runner captures a tuning snapshot (GRUB / BIOS-observable /
+power / system config) once per host via [TUNING.md](TUNING.md) and stores it in
+the run record. The summary renders it as a `Category | Item | Expected |
+Observed | Status` table and a one-line verdict, e.g.
+`Tuning: WARN - 3 difference(s) from guide`. Differences (WARN/FAIL) are
+highlighted (bold/colored in HTML); when there are any, a next-step points to
+`accel.py tune`. Local/synthetic runs show `not captured (local run)`.
 
 ## Email
 

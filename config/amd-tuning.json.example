@@ -37,6 +37,11 @@
       "Tsme": "Disabled",
       "Iommu": "Enabled",
       "ApbDis": "1"
+    },
+    "system": {
+      "thp": {"expect": "never", "severity": "warn", "note": "transparent_hugepage=never for deterministic latency"},
+      "hugepages_1g": {"min": 1, "severity": "warn", "note": "reserve 1G hugepages for DPDK (default_hugepagesz=1G hugepages=N)"},
+      "tuned_profile": {"recommended": ["accelerator-performance", "throughput-performance"], "severity": "info", "note": "apply a performance tuned profile (tuned-adm profile accelerator-performance)"}
     }
   },
 

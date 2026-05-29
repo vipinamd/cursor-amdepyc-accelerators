@@ -53,6 +53,11 @@ Each run is one JSON file under `results/runs/<accelerator>/<run_id>.json`:
 - `metrics.cpu`: cores_used, cores_to_saturate, cpu_util_pct, offload_ratio
 - `derived`: throughput_per_watt, throughput_per_core
 - `profile`: profiler, artifacts, hotspots
+- `tuning`: platform tuning snapshot captured at run time (family, verdict,
+  checks vs the AMD guide); empty `{}` for local/synthetic runs
+- `setup`: setup-sanity snapshot captured before the sweep (verdict, blocker,
+  rows for toolchain/build/hugepages/device/config/GRUB/BIOS, and any applied
+  remediations); empty `{}` for local/synthetic runs
 - `verdict`, `notes`
 
 `config_hash` is a stable hash of the knobs (excluding thread count), so runs

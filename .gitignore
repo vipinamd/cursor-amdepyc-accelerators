@@ -12,15 +12,18 @@ config/report-email.conf
 config/accelerators.json
 config/workloads.json
 config/amd-tuning.json
+config/sanity.json
 
 # Result store internal markers (the JSON runs + index.csv ARE committed)
 results/reports/.latest_*
 results/.latest_*
 results/bundles/*/
 
-# Tuning reports/records contain the lab host IP - keep them local
+# Tuning/sanity reports/records contain the lab host IP - keep them local
 results/tuning/
 results/reports/tuning_*
+results/sanity/
+results/reports/sanity_*
 
 # Profiler artifacts are large and machine-specific; keep them local.
 # (Parsed hotspot summaries are stored inside the per-run JSON instead.)

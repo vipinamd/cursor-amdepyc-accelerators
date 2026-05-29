@@ -32,10 +32,76 @@ def _latest_run_path(arg: str | None) -> Path | None:
     return runs[0] if runs else None
 
 
+_TUNE_COLOR = {"PASS": "#1a7f37", "WARN": "#9a6700", "FAIL": "#cf222e",
+               "INFO": "#57606a"}
+
+
+def _tuning_diffs(rec: dict) -> int:
+    checks = rec.get("tuning", {}).get("checks", [])
+    return sum(1 for c in checks if c["status"] in ("WARN", "FAIL"))
+
+
+def _tuning_html_table(checks: list[dict]) -> str:
+    """Status-colored tuning table (html_table is generic, so build inline)."""
+    hdr = ["Category", "Item", "Expected", "Observed", "Status"]
+    th = "".join(f"<th style='padding:6px;border:1px solid #ccc'>{h}</th>" for h in hdr)
+    rows = []
+    for c in checks:
+        col = _TUNE_COLOR.get(c["status"], "#57606a")
+        weight = "bold" if c["status"] in ("WARN", "FAIL") else "normal"
+        tds = "".join(
+            f"<td style='padding:6px;border:1px solid #ccc'>{v}</td>"
+            for v in (c["category"], c["item"], c["expected"], c["observed"]))
+        tds += (f"<td style='padding:6px;border:1px solid #ccc;color:{col};"
+                f"font-weight:{weight}'>{c['status']}</td>")
+        rows.append(f"<tr>{tds}</tr>")
+    return ("<table style='border-collapse:collapse;font-family:sans-serif;"
+            f"font-size:14px'><thead><tr>{th}</tr></thead><tbody>"
+            f"{''.join(rows)}</tbody></table>")
+
+
+def _setup_diffs(rec: dict) -> int:
+    rows = rec.get("setup", {}).get("rows", [])
+    return sum(1 for r in rows if r["status"] in ("WARN", "FAIL"))
+
+
+def _setup_blockers(rec: dict) -> int:
+    rows = rec.get("setup", {}).get("rows", [])
+    return sum(1 for r in rows if r.get("blocker") and r["status"] == "FAIL")
+
+
+def _setup_html_table(rows: list[dict]) -> str:
+    """Status-colored setup table with a (blocker) tag on hard failures."""
+    hdr = ["Category", "Item", "Expected", "Observed", "Status"]
+    th = "".join(f"<th style='padding:6px;border:1px solid #ccc'>{h}</th>" for h in hdr)
+    out = []
+    for r in rows:
+        col = _TUNE_COLOR.get(r["status"], "#57606a")
+        weight = "bold" if r["status"] in ("WARN", "FAIL") else "normal"
+        tag = " (blocker)" if r.get("blocker") and r["status"] == "FAIL" else ""
+        tds = "".join(
+            f"<td style='padding:6px;border:1px solid #ccc'>{v}</td>"
+            for v in (r["category"], r["item"], r["expected"], r["observed"]))
+        tds += (f"<td style='padding:6px;border:1px solid #ccc;color:{col};"
+                f"font-weight:{weight}'>{r['status']}{tag}</td>")
+        out.append(f"<tr>{tds}</tr>")
+    return ("<table style='border-collapse:collapse;font-family:sans-serif;"
+            f"font-size:14px'><thead><tr>{th}</tr></thead><tbody>"
+            f"{''.join(out)}</tbody></table>")
+
+
 def _next_steps(rec: dict) -> list[str]:
     steps = []
     perf = rec["metrics"]["performance"]
     cpu = rec["metrics"]["cpu"]
+    if _setup_blockers(rec) > 0:
+        steps.append(
+            "Setup sanity has blocker(s); run "
+            "`python scripts/accel.py preflight --fix` to remediate before benchmarking.")
+    if _tuning_diffs(rec) > 0:
+        steps.append(
+            "Platform tuning differs from the AMD guide; run "
+            "`python scripts/accel.py tune` for the full checklist and remediation.")
     if perf["throughput_gbps"] <= 0:
         steps.append("No throughput recorded - verify device bind (vfio-pci), hugepages, and devargs in config/accelerators.json.")
     if rec["metrics"]["power"].get("source") == "synthetic":
@@ -82,6 +148,33 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
     hot_hdr = ["Symbol", "%"]
     hot_rows = [[h["symbol"], h["pct"]] for h in hot]
 
+    # Setup sanity (captured at run time, before the sweep)
+    setup = rec.get("setup") or {}
+    setup_raw = setup.get("rows", [])
+    setup_hdr = ["Category", "Item", "Expected", "Observed", "Status"]
+    setup_rows = [[r["category"], r["item"], r["expected"], r["observed"],
+                   r["status"] + (" (blocker)" if r.get("blocker") and r["status"] == "FAIL" else "")]
+                  for r in setup_raw]
+    setup_applied = setup.get("remediated", [])
+    if setup_raw:
+        setup_line = (f"{setup.get('verdict', 'UNKNOWN')} - {_setup_blockers(rec)} "
+                      f"blocker(s), {_setup_diffs(rec)} issue(s)")
+    else:
+        setup_line = "not captured (local run)"
+
+    # Platform tuning vs AMD guide (captured at run time)
+    tune = rec.get("tuning") or {}
+    tune_checks = tune.get("checks", [])
+    tune_hdr = ["Category", "Item", "Expected", "Observed", "Status"]
+    tune_rows = [[c["category"], c["item"], c["expected"], c["observed"], c["status"]]
+                 for c in tune_checks]
+    tune_diffs = _tuning_diffs(rec)
+    if tune_checks:
+        tune_line = (f"{tune.get('verdict', 'UNKNOWN')} - {tune_diffs} "
+                     f"difference(s) from guide (family: {tune.get('family', '?')})")
+    else:
+        tune_line = "not captured (local run)"
+
     recent_hdr = ["Run", "Accel", "Tput Gbps", "Sat cores", "Gbps/W"]
     recent_rows = [[r["run_id"], r["accelerator"], r["throughput_gbps"],
                     r["cores_to_saturate"], r["throughput_per_watt"]] for r in recent[:8]]
@@ -97,7 +190,15 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
           "", "## Performance", "", md_table(perf_hdr, [perf_row]),
           "", "## Power", "", md_table(power_hdr, [power_row]),
           "", "## CPU efficiency", "", md_table(eff_hdr, [eff_row]),
-          "", "## Thread-to-saturate sweep", "", md_table(sweep_hdr, sweep_rows)]
+          "", "## Setup sanity", "", f"_Setup: {setup_line}_", ""]
+    if setup_rows:
+        md += [md_table(setup_hdr, setup_rows)]
+    if setup_applied:
+        md += ["", "**Applied remediations:**", ""] + [f"- {r}" for r in setup_applied]
+    md += ["", "## Platform tuning vs AMD guide", "", f"_Tuning: {tune_line}_", ""]
+    if tune_rows:
+        md += [md_table(tune_hdr, tune_rows)]
+    md += ["", "## Thread-to-saturate sweep", "", md_table(sweep_hdr, sweep_rows)]
     if hot_rows:
         md += ["", "## Profiler hotspots ("+rec["profile"]["profiler"]+")", "", md_table(hot_hdr, hot_rows)]
     if rec.get("notes"):
@@ -113,7 +214,15 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
            "PERFORMANCE", ascii_table(perf_hdr, [perf_row]), "",
            "POWER", ascii_table(power_hdr, [power_row]), "",
            "CPU EFFICIENCY", ascii_table(eff_hdr, [eff_row]), "",
-           "THREAD-TO-SATURATE SWEEP", ascii_table(sweep_hdr, sweep_rows)]
+           f"SETUP SANITY: {setup_line}"]
+    if setup_rows:
+        txt += [ascii_table(setup_hdr, setup_rows)]
+    if setup_applied:
+        txt += ["APPLIED REMEDIATIONS"] + [f"  - {r}" for r in setup_applied]
+    txt += ["", f"PLATFORM TUNING VS AMD GUIDE: {tune_line}"]
+    if tune_rows:
+        txt += [ascii_table(tune_hdr, tune_rows)]
+    txt += ["", "THREAD-TO-SATURATE SWEEP", ascii_table(sweep_hdr, sweep_rows)]
     if hot_rows:
         txt += ["", f"PROFILER HOTSPOTS ({rec['profile']['profiler']})", ascii_table(hot_hdr, hot_rows)]
     txt += ["", "NEXT STEPS", "-" * 40]
@@ -130,7 +239,18 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
             "<h3>Performance</h3>", html_table(perf_hdr, [perf_row]),
             "<h3>Power</h3>", html_table(power_hdr, [power_row]),
             "<h3>CPU efficiency</h3>", html_table(eff_hdr, [eff_row]),
-            "<h3>Thread-to-saturate sweep</h3>", html_table(sweep_hdr, sweep_rows)]
+            "<h3>Setup sanity</h3>",
+            f"<p><b>Setup:</b> {setup_line}</p>"]
+    if setup_raw:
+        html += [_setup_html_table(setup_raw)]
+    if setup_applied:
+        html += ["<p><b>Applied remediations:</b></p><ul>"] + \
+                [f"<li>{r}</li>" for r in setup_applied] + ["</ul>"]
+    html += ["<h3>Platform tuning vs AMD guide</h3>",
+             f"<p><b>Tuning:</b> {tune_line}</p>"]
+    if tune_rows:
+        html += [_tuning_html_table(tune_checks)]
+    html += ["<h3>Thread-to-saturate sweep</h3>", html_table(sweep_hdr, sweep_rows)]
     if hot_rows:
         html += [f"<h3>Profiler hotspots ({rec['profile']['profiler']})</h3>", html_table(hot_hdr, hot_rows)]
     if recent_rows:

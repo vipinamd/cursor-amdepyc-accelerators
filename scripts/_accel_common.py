@@ -116,6 +116,10 @@ def load_tuning() -> dict:
     return _load_json_config("amd-tuning.json")
 
 
+def load_sanity() -> dict:
+    return _load_json_config("sanity.json")
+
+
 def enabled_accelerators() -> dict:
     return {k: v for k, v in load_accelerators().items() if v.get("enabled")}
 
@@ -181,6 +185,8 @@ def new_run_record(
             "artifacts": [],
             "hotspots": [],
         },
+        "tuning": {},  # platform tuning snapshot (family, verdict, checks)
+        "setup": {},   # setup sanity snapshot (verdict, blocker, rows, remediated)
         "verdict": "UNKNOWN",
         "notes": [],
     }

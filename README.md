@@ -47,6 +47,7 @@ cp config/workloads.json.example    config/workloads.json
 python scripts/accel.py discover 10.0.0.10     # write lab.hosts, verify SSH
 python scripts/accel.py tune                   # check BIOS/GRUB/power/PCIe tuning
 python scripts/accel.py install                # build DPDK + perf/turbostat/ipmitool
+python scripts/accel.py preflight              # setup sanity (build/hugepages/bind)
 python scripts/accel.py run --accel dsa,qat    # benchmark + power + profile
 python scripts/accel.py report                 # executive summary
 python scripts/accel.py compare --mode accel   # DSA vs QAT vs ...
@@ -60,8 +61,9 @@ PowerShell and on Linux without sshpass or WSL.
 
 | Path | Purpose |
 |------|---------|
-| `scripts/accel.py` | Orchestrator: `discover, tune, install, run, report, compare, email, all` |
+| `scripts/accel.py` | Orchestrator: `discover, tune, install, preflight, run, report, compare, email, all` |
 | `scripts/check-platform-tuning.py` | AMD BIOS/GRUB/power/PCIe tuning check (per-SoC profiles) |
+| `scripts/check-setup-sanity.py` | Pre-run setup sanity (toolchain/build/hugepages/device/config) |
 | `scripts/run-accel-benchmark.py` | Thread-sweep runner (power + profiler + store) |
 | `scripts/analyze-accel-run.py` | Latest run -> MD/TXT/HTML executive summary |
 | `scripts/compare-accel-runs.py` | Cross-run comparison (accel / sweep / regression) |
@@ -78,6 +80,7 @@ PowerShell and on Linux without sshpass or WSL.
 
 - [docs/FRAMEWORK.md](docs/FRAMEWORK.md) - architecture, run record schema, results store
 - [docs/TUNING.md](docs/TUNING.md) - AMD BIOS/GRUB/power/PCIe tuning check (per-SoC profiles)
+- [docs/SANITY.md](docs/SANITY.md) - setup sanity preflight + `--fix` self-heal
 - [docs/ACCELERATORS.md](docs/ACCELERATORS.md) - DSA, QAT, DLB, SDXI, SDCI setup + devargs
 - [docs/PROFILING.md](docs/PROFILING.md) - perf, AMD uProf, Intel VTune
 - [docs/POWER.md](docs/POWER.md) - RAPL (turbostat) and BMC (IPMI DCMI)

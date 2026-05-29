@@ -37,12 +37,25 @@ checklist.
 Edit `config/accelerators.json`: set `"enabled": true` and the `bdf`/`devargs`
 for each engine (DSA, QAT, ...). Bind devices to `vfio-pci` on the DUT.
 
+## 2a. Setup sanity preflight
+
+```bash
+python scripts/accel.py preflight                  # toolchain/build/hugepages/bind/config
+python scripts/accel.py preflight --accel dsa      # one engine
+python scripts/accel.py preflight --accel dsa --fix # remediate blockers (+ reboot if GRUB)
+```
+
+The same checks run automatically before each `run` and skip any accelerator
+with an unresolved blocker. See [SANITY.md](SANITY.md).
+
 ## 3. Run benchmarks
 
 ```bash
 python scripts/accel.py run --accel dsa            # one engine
 python scripts/accel.py run --accel dsa,qat        # several
 python scripts/accel.py run                        # all enabled
+python scripts/accel.py run --fix                  # remediate setup blockers, then run
+python scripts/accel.py run --skip-sanity          # bypass the preflight gate
 python scripts/accel.py run --accel dlb --force-stubs   # scaffolded engines
 ```
 
