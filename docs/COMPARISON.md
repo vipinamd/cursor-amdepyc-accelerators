@@ -5,7 +5,7 @@ and writes a comparison report (MD/TXT/HTML + CSV) with delta-vs-baseline on
 the chosen metric plus perf/W and perf/core columns.
 
 ```bash
-python scripts/compare-accel-runs.py --mode <accel|sweep|regression> \
+python scripts/compare-accel-runs.py --mode <accel|sweep|regression|topology> \
     --filter key=val[,val] ... --metric throughput_gbps --baseline first
 ```
 
@@ -16,6 +16,11 @@ python scripts/compare-accel-runs.py --mode <accel|sweep|regression> \
 | `accel` | Accelerator A vs B vs ... | best (max-metric) run per accelerator |
 | `sweep` | One engine across a knob | rows sorted by `op_size` |
 | `regression` | Same config over time | rows sorted by `timestamp` |
+| `topology` | Placement curves (same-CCD vs across-CCD, single vs SMT) | per-strategy rows, pivoted by worker count from each run's sweep |
+
+`topology` mode reads each topology run's full sweep (not just the headline
+index row) and pivots throughput by worker count; filter by `placement` and
+`accelerator`/`op_size`. See [TOPOLOGY.md](TOPOLOGY.md).
 
 ## Filters
 

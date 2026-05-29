@@ -49,6 +49,7 @@ INDEX_FIELDS = [
     "cores_to_saturate",
     "throughput_per_watt",
     "throughput_per_core",
+    "placement",
     "verdict",
     "json_path",
 ]
@@ -187,6 +188,7 @@ def new_run_record(
         },
         "tuning": {},  # platform tuning snapshot (family, verdict, checks)
         "setup": {},   # setup sanity snapshot (verdict, blocker, rows, remediated)
+        "placement": {},  # topology placement (strategy, lcores) when --topology
         "verdict": "UNKNOWN",
         "notes": [],
     }
@@ -244,9 +246,30 @@ def _flatten(record: dict) -> dict:
         "cores_to_saturate": cpu.get("cores_to_saturate", 0),
         "throughput_per_watt": record["derived"]["throughput_per_watt"],
         "throughput_per_core": record["derived"]["throughput_per_core"],
+        "placement": record.get("placement", {}).get("strategy", ""),
         "verdict": record["verdict"],
         "json_path": "",  # filled in by store_run once the path is known
     }
+
+
+def _migrate_index_header() -> None:
+    """Rewrite results/index.csv if its header predates a new INDEX_FIELDS column.
+
+    Reads existing rows (missing columns default to "") and writes them back
+    with the current header, so adding a column stays backward-compatible.
+    """
+    if not INDEX_CSV.exists() or INDEX_CSV.stat().st_size < 5:
+        return
+    with INDEX_CSV.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames == INDEX_FIELDS:
+            return
+        rows = list(reader)
+    with INDEX_CSV.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=INDEX_FIELDS, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k, "") for k in INDEX_FIELDS})
 
 
 def store_run(record: dict) -> Path:
@@ -261,6 +284,7 @@ def store_run(record: dict) -> Path:
 
     json_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
+    _migrate_index_header()
     new_file = not INDEX_CSV.exists() or INDEX_CSV.stat().st_size < 5
     with INDEX_CSV.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=INDEX_FIELDS)

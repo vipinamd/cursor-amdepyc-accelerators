@@ -28,9 +28,15 @@ class CryptoPerf(AcceleratorPlugin):
         dpdk = expand_home(cfg["DPDK_DIR"])
         build = cfg.get("DPDK_BUILD", "build")
         tool = f"{dpdk}/{build}/app/dpdk-test-crypto-perf"
-        base = int(cfg.get("CTRL_LCORE", "1"))
-        # control lcore + N worker lcores
-        lcores = ",".join(str(base + i) for i in range(threads + 1))
+        # control lcore + N worker lcores. Under --topology the runner supplies
+        # an explicit topology-aware worker set via knobs.
+        explicit = knobs.get("worker_lcores")
+        if explicit:
+            main = int(knobs.get("ctrl_lcore", cfg.get("CTRL_LCORE", "1")))
+            lcores = ",".join(str(x) for x in [main, *[int(w) for w in explicit]])
+        else:
+            base = int(cfg.get("CTRL_LCORE", "1"))
+            lcores = ",".join(str(base + i) for i in range(threads + 1))
         bdf = accel_cfg.get("bdf", "")
         devargs = accel_cfg.get("devargs", "")
         allow = f"-a {bdf}{(',' + devargs) if devargs else ''}" if bdf else ""

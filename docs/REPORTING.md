@@ -31,6 +31,16 @@ are highlighted and hard blockers are tagged `(blocker)`; when `--fix` ran, an
 "Applied remediations" list is included and a next-step points to
 `accel.py preflight --fix`. Local runs show `not captured (local run)`.
 
+### Topology placement
+
+When a run is produced by `run --topology` (see [TOPOLOGY.md](TOPOLOGY.md)), the
+record carries a `placement` block and the summary adds a "Topology placement"
+line to the Overview (strategy, NUMA node, L3 domains, SMT) and an
+`lcores` / `CCD(s)` column to the thread-sweep table. Cross-placement curves
+(same-CCD vs across-CCD, single vs SMT) are produced by
+`compare --mode topology`, which expands each run's sweep and pivots throughput
+by worker count.
+
 ### Platform tuning vs AMD guide
 
 For remote runs, the runner captures a tuning snapshot (GRUB / BIOS-observable /

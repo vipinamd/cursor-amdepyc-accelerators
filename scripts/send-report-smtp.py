@@ -7,6 +7,7 @@ body with the HTML summary as an alternative part so it renders in clients.
 """
 from __future__ import annotations
 
+import argparse
 import smtplib
 import sys
 from email.message import EmailMessage
@@ -31,22 +32,46 @@ def _latest_summary() -> tuple[Path | None, Path | None, str]:
     return txt, html, verdict
 
 
+def _latest_comparison() -> tuple[Path | None, Path | None, str]:
+    marker = REPORTS / ".latest_comparison"
+    if not marker.exists():
+        return None, None, "comparison"
+    lines = marker.read_text(encoding="utf-8").splitlines()
+    # marker holds md, txt, html, csv
+    txt = Path(lines[1]) if len(lines) > 1 else None
+    html = Path(lines[2]) if len(lines) > 2 else None
+    return txt, html, "comparison"
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="email the latest summary or comparison")
+    ap.add_argument("--to", help="override recipient(s), comma-separated")
+    ap.add_argument("--cc", help="override Cc; pass empty string to drop Cc")
+    ap.add_argument("--subject", help="override the subject line")
+    ap.add_argument("--comparison", action="store_true",
+                    help="send the latest cross-run comparison instead of the run summary")
+    args = ap.parse_args()
+
     cfg = load_config()
-    to = cfg.get("TO", "")
-    cc = cfg.get("CC", "")
+    to = args.to if args.to is not None else cfg.get("TO", "")
+    cc = args.cc if args.cc is not None else cfg.get("CC", "")
     sender = cfg.get("FROM", "")
     dry = cfg.get("DRY_RUN", "1") != "0"
 
-    txt_path, html_path, verdict = _latest_summary()
+    if args.comparison:
+        txt_path, html_path, verdict = _latest_comparison()
+        default_subject = "[accel-bench] topology placement comparison"
+    else:
+        txt_path, html_path, verdict = _latest_summary()
+        default_subject = f"[accel-bench] run summary - verdict {verdict}"
     if not txt_path or not txt_path.exists():
-        log("no summary found; run: python scripts/analyze-accel-run.py --latest")
+        log("no report found; run analyze-accel-run.py --latest or compare-accel-runs.py first")
         return 1
     body = txt_path.read_text(encoding="utf-8")
     html = html_path.read_text(encoding="utf-8") if html_path and html_path.exists() else None
 
     msg = EmailMessage()
-    msg["Subject"] = f"[accel-bench] run summary - verdict {verdict}"
+    msg["Subject"] = args.subject or default_subject
     msg["From"] = sender
     msg["To"] = to
     if cc:

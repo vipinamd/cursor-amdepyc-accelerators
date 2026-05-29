@@ -131,6 +131,13 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
         ["Git commit", rec["git_commit"] or "n/a"],
         ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
     ]
+    placement = rec.get("placement") or {}
+    if placement:
+        overview.insert(4, ["Topology placement",
+            f"{placement.get('strategy', '?')} "
+            f"(NUMA {placement.get('numa_node', '?')}, "
+            f"L3 {placement.get('l3_domains', [])}, "
+            f"SMT {'on' if placement.get('smt_used') else 'off'})"])
     perf_hdr = ["Throughput (Gbps)", "Ops/s", "Lat avg (us)", "Lat p99 (us)"]
     perf_row = [perf["throughput_gbps"], perf["ops_per_sec"], perf["latency_us_avg"], perf["latency_us_p99"]]
     power_hdr = ["Source", "Pkg W avg", "Pkg W peak", "DRAM W", "Node W avg", "Energy (J)"]
@@ -140,9 +147,17 @@ def render(rec: dict, recent: list[dict]) -> tuple[str, str, str, str, str]:
     eff_row = [cpu["cores_used"], cpu["cores_to_saturate"], cpu["offload_ratio"],
                der["throughput_per_watt"], der["throughput_per_core"]]
 
-    sweep_hdr = ["Threads", "Throughput (Gbps)", "Ops/s", "Lat avg (us)"]
-    sweep_rows = [[s["threads"], s["throughput_gbps"], s["ops_per_sec"], s.get("latency_us_avg", 0.0)]
-                  for s in rec.get("sweep", [])]
+    if placement:
+        sweep_hdr = ["Threads", "lcores", "CCD(s)", "Throughput (Gbps)", "Ops/s", "Lat avg (us)"]
+        sweep_rows = [[s["threads"],
+                       ",".join(str(x) for x in s.get("lcores", [])),
+                       ",".join(str(x) for x in s.get("l3_domains", [])),
+                       s["throughput_gbps"], s["ops_per_sec"], s.get("latency_us_avg", 0.0)]
+                      for s in rec.get("sweep", [])]
+    else:
+        sweep_hdr = ["Threads", "Throughput (Gbps)", "Ops/s", "Lat avg (us)"]
+        sweep_rows = [[s["threads"], s["throughput_gbps"], s["ops_per_sec"], s.get("latency_us_avg", 0.0)]
+                      for s in rec.get("sweep", [])]
 
     hot = rec["profile"]["hotspots"][:8]
     hot_hdr = ["Symbol", "%"]

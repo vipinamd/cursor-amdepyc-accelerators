@@ -32,14 +32,25 @@ class DmaPerf(AcceleratorPlugin):
         bdf = accel_cfg.get("bdf", "")
         return f"dma-perf on {accel_cfg.get('dpdk_driver', 'dmadev')} {bdf}"
 
-    def _lcore_dma(self, cfg: dict, accel_cfg: dict, threads: int) -> str:
-        base = int(cfg.get("CTRL_LCORE", "8"))
+    def _worker_lcores(self, cfg: dict, knobs: dict, threads: int) -> tuple[int, list[int]]:
+        """Return (main_lcore, [worker_lcores]).
+
+        Under --topology the runner supplies an explicit, topology-aware set via
+        knobs; otherwise fall back to a contiguous range after the control lcore.
+        """
+        explicit = knobs.get("worker_lcores")
+        if explicit:
+            main = int(knobs.get("ctrl_lcore", cfg.get("CTRL_LCORE", "8")))
+            return main, [int(w) for w in explicit]
+        main = int(cfg.get("CTRL_LCORE", "8"))
+        return main, [main + 1 + i for i in range(threads)]
+
+    def _lcore_dma(self, accel_cfg: dict, workers: list[int]) -> str:
         bdf = accel_cfg.get("bdf", "0000:00:04.1")
         # New dma-perf format: one lcore_dmaN= line per worker channel.
         lines = []
-        for i in range(threads):
-            lines.append(
-                f"lcore_dma{i}=lcore={base + 1 + i},dev={bdf},dir=mem2mem")
+        for i, w in enumerate(workers):
+            lines.append(f"lcore_dma{i}=lcore={w},dev={bdf},dir=mem2mem")
         return "\n".join(lines)
 
     def build_script(self, cfg: dict, accel_cfg: dict, knobs: dict, threads: int) -> str:
@@ -50,8 +61,7 @@ class DmaPerf(AcceleratorPlugin):
         ring = int(knobs.get("ring_size", 1024))
         secs = int(knobs.get("duration_sec", 30))
         numa = int(accel_cfg.get("numa_node", cfg.get("BENCH_NUMA", "0")))
-        main = int(cfg.get("CTRL_LCORE", "8"))
-        workers = [main + 1 + i for i in range(threads)]
+        main, workers = self._worker_lcores(cfg, knobs, threads)
         wlist = ",".join(str(w) for w in workers)
         if accel_cfg.get("mode", "dma") == "cpu":
             # CPU_MEM_COPY: worker lcores copy with the CPU; no dmadev device.
@@ -74,7 +84,7 @@ dma_ring_size={ring}
 kick_batch=32
 src_numa_node={numa}
 dst_numa_node={numa}
-{self._lcore_dma(cfg, accel_cfg, threads)}
+{self._lcore_dma(accel_cfg, workers)}
 """
         ini = f"""[GLOBAL]
 eal_args={eal}

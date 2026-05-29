@@ -58,6 +58,10 @@ Each run is one JSON file under `results/runs/<accelerator>/<run_id>.json`:
 - `setup`: setup-sanity snapshot captured before the sweep (verdict, blocker,
   rows for toolchain/build/hugepages/device/config/GRUB/BIOS, and any applied
   remediations); empty `{}` for local/synthetic runs
+- `placement`: topology placement when produced by `run --topology` (strategy,
+  numa_node, l3_domains, smt_used, lcores_by_count); each sweep point also gains
+  `lcores/cores/l3_domains/smt`. Empty `{}` for normal runs. The flattened
+  `placement` (strategy name) is mirrored into `index.csv`
 - `verdict`, `notes`
 
 `config_hash` is a stable hash of the knobs (excluding thread count), so runs

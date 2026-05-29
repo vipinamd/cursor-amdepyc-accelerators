@@ -178,6 +178,8 @@ def cmd_run(cfg: dict, args: argparse.Namespace) -> int:
         cmd += ["--fix"]
     if getattr(args, "skip_sanity", False):
         cmd += ["--skip-sanity"]
+    if getattr(args, "topology", False):
+        cmd += ["--topology"]
     return subprocess.call(cmd)
 
 
@@ -218,7 +220,8 @@ def cmd_all(cfg: dict, args: argparse.Namespace) -> int:
     cfg = load_config()
     cmd_install(cfg, argparse.Namespace())
     cmd_run(cfg, argparse.Namespace(accel=None, duration=None, max_threads=None,
-                                    force_stubs=False, fix=False, skip_sanity=False))
+                                    force_stubs=False, fix=False, skip_sanity=False,
+                                    topology=False))
     cmd_report(cfg, argparse.Namespace())
     return 0
 
@@ -242,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force-stubs", action="store_true")
     p.add_argument("--fix", action="store_true", help="remediate setup-sanity blockers")
     p.add_argument("--skip-sanity", action="store_true", help="skip setup-sanity preflight")
+    p.add_argument("--topology", action="store_true", help="topology placement sweep (DPDK lcore tools)")
 
     sub.add_parser("report", help="analyze latest run -> executive summary")
 

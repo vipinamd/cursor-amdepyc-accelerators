@@ -42,7 +42,7 @@ TOOLCHAIN_DEPS = (
 # remote probe
 # --------------------------------------------------------------------------
 def _probe_script(app_path: str | None, bdf: str) -> str:
-    app = (f"test -x '{app_path}' && echo present || echo missing"
+    app = (f'test -x "{app_path}" && echo present || echo missing'
            if app_path else "echo n/a")
     drv = (f"(test -e /sys/bus/pci/devices/{bdf}/driver && "
            f"basename $(readlink /sys/bus/pci/devices/{bdf}/driver)) "

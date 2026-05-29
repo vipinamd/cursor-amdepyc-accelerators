@@ -1,5 +1,10 @@
 {
-  "_comment": "Copy to config/workloads.json and edit. Keyed by tool name (see plugins/). 'thread_sweep' drives the CPU-threads-to-saturate measurement: the runner repeats the workload at each worker-core count and finds the saturation knee. 'duration_sec' is per data point.",
+  "_comment": "Copy to config/workloads.json and edit. Keyed by tool name (see plugins/). 'thread_sweep' drives the CPU-threads-to-saturate measurement: the runner repeats the workload at each worker-core count and finds the saturation knee. 'duration_sec' is per data point. 'topology' is used only under 'run --topology' (DPDK lcore tools): 'strategies' = which placements to explore (single_core, smt_pair, same_ccd, across_ccd) and 'count_sweep' = worker counts for the same_ccd/across_ccd cases (single_core/smt_pair are fixed at 1/2).",
+
+  "_topology_default": {
+    "strategies": ["single_core", "smt_pair", "same_ccd", "across_ccd"],
+    "count_sweep": [1, 2, 4, 8, 16]
+  },
 
   "memcpy_ref": {
     "buffer_bytes": [4096, 65536, 1048576],
@@ -14,7 +19,11 @@
     "duration_sec": 30,
     "thread_sweep": [1, 2, 4, 8],
     "ring_size": 1024,
-    "saturation_epsilon": 0.05
+    "saturation_epsilon": 0.05,
+    "topology": {
+      "strategies": ["single_core", "smt_pair", "same_ccd", "across_ccd"],
+      "count_sweep": [1, 2, 4, 8, 16]
+    }
   },
 
   "crypto_perf": {
@@ -24,7 +33,11 @@
     "buffer_sizes": [64, 512, 1024, 2048],
     "duration_sec": 30,
     "thread_sweep": [1, 2, 4, 8],
-    "saturation_epsilon": 0.05
+    "saturation_epsilon": 0.05,
+    "topology": {
+      "strategies": ["single_core", "smt_pair", "same_ccd", "across_ccd"],
+      "count_sweep": [1, 2, 4, 8, 16]
+    }
   },
 
   "eventdev": {

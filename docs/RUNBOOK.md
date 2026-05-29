@@ -56,8 +56,12 @@ python scripts/accel.py run --accel dsa,qat        # several
 python scripts/accel.py run                        # all enabled
 python scripts/accel.py run --fix                  # remediate setup blockers, then run
 python scripts/accel.py run --skip-sanity          # bypass the preflight gate
+python scripts/accel.py run --accel dsa --topology # placement sweep (CCD/SMT)
 python scripts/accel.py run --accel dlb --force-stubs   # scaffolded engines
 ```
+
+For the topology placement sweep (single-core / SMT-pair / same-CCD / across-CCD
+for the DPDK lcore tools), see [TOPOLOGY.md](TOPOLOGY.md).
 
 Each run writes a per-run JSON, appends `index.csv`, and saves a bundle with
 raw logs and profiler artifacts.
@@ -67,6 +71,7 @@ raw logs and profiler artifacts.
 ```bash
 python scripts/accel.py report                     # latest run summary
 python scripts/accel.py compare --mode accel --filter op_size=65536
+python scripts/accel.py compare --mode topology --filter accelerator=dsa
 python scripts/accel.py compare --mode regression --filter accelerator=dsa
 ```
 

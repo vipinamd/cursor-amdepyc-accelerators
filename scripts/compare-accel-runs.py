@@ -5,6 +5,8 @@ Modes:
   accel       Accelerator A vs B (one best run per accelerator)
   sweep       One accelerator across a knob (op size / threads)
   regression  Same accelerator + config over time (by commit/date)
+  topology    Thread-placement curves (same-CCD vs across-CCD, single vs SMT)
+              pivoted by worker count, expanded from each run's sweep
 
 Selection uses --filter tokens (key=val[,val...]) matched against index
 columns, e.g.:
@@ -106,9 +108,48 @@ def build(rows: list[dict], metric: str, baseline: str) -> tuple[list[str], list
     return headers, out
 
 
+def build_topology(rows: list[dict], metric: str) -> tuple[list[str], list[list]]:
+    """Pivot placement strategies by worker count, expanded from run sweeps.
+
+    The index keeps only the headline point per record, so the per-count curve
+    is read from each run JSON's `sweep`. Rows group by (accel, op_size,
+    placement); columns are worker counts. Lets same_ccd vs across_ccd and
+    single_core vs smt_pair be read off directly.
+    """
+    groups: dict[tuple, dict[int, float]] = {}
+    counts: set[int] = set()
+    for r in rows:
+        strategy = r.get("placement", "")
+        if not strategy:
+            continue  # non-topology run
+        jp = r.get("json_path", "")
+        if not jp:
+            continue
+        try:
+            rec = store.load_run(store.REPO / jp)
+        except (OSError, ValueError):
+            continue
+        key = (r.get("accelerator", ""), str(r.get("op_size", "")), strategy)
+        g = groups.setdefault(key, {})
+        for s in rec.get("sweep", []):
+            t = int(s.get("threads", 0) or 0)
+            v = float(s.get(metric, 0.0) or 0.0)
+            counts.add(t)
+            if t not in g or v > g[t]:
+                g[t] = v
+    ordered = sorted(counts)
+    headers = ["accelerator", "op_size", "placement"] + [f"t{c}" for c in ordered]
+    table = []
+    for key in sorted(groups):
+        g = groups[key]
+        table.append([key[0], key[1], key[2]] + [g.get(c, "") for c in ordered])
+    return headers, table
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="compare stored accelerator runs")
-    ap.add_argument("--mode", choices=["accel", "sweep", "regression"], default="accel")
+    ap.add_argument("--mode", choices=["accel", "sweep", "regression", "topology"],
+                    default="accel")
     ap.add_argument("--filter", nargs="*", default=[], help="key=val[,val] selectors")
     ap.add_argument("--metric", default="throughput_gbps", help="primary metric for delta")
     ap.add_argument("--baseline", default="first", help="'first' or a run_id")
@@ -120,12 +161,19 @@ def main() -> int:
         return 1
 
     rows = apply_filters(rows, parse_filters(args.filter))
-    rows = select(rows, args.mode, args.metric)
+    if args.mode != "topology":
+        rows = select(rows, args.mode, args.metric)
     if not rows:
         print("no runs matched the filter", file=sys.stderr)
         return 1
 
-    headers, table = build(rows, args.metric, args.baseline)
+    if args.mode == "topology":
+        headers, table = build_topology(rows, args.metric)
+        if not table:
+            print("no topology runs matched (run: accel.py run --topology)", file=sys.stderr)
+            return 1
+    else:
+        headers, table = build(rows, args.metric, args.baseline)
     ts = store.now_ts()
     title = f"Accelerator comparison ({args.mode}, metric={args.metric})"
 
