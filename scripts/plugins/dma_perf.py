@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """DPDK dma-perf runner for DMA-class accelerators (DSA, SDXI, SDCI).
 
-Uses dpdk-test-dma-perf, which is driven by an INI config describing the
-test case and the lcore->DMA-channel mapping. We generate one INI per
-thread-sweep point (N worker lcores each driving a DMA channel on the
-configured device), run the tool to a result CSV on the DUT, and parse the
-average throughput out of that CSV.
+Uses dpdk-test-dma-perf, driven by an INI with a [GLOBAL] section (EAL args,
+cache_flush, test_seconds) plus one [caseN] section. We generate one INI per
+thread-sweep point and parse the average throughput from the result CSV.
 
-For a CPU-vs-offload baseline the same tool supports type=CPU_MEM_COPY; the
-framework's memcpy_ref plugin already provides a portable software baseline,
-so this plugin focuses on the DMA_MEM_COPY (hardware offload) path.
+Two modes (accel_cfg "mode"):
+  dma  (default): DMA_MEM_COPY -- N worker lcores each drive a dmadev channel
+                  on the configured device (hardware offload path).
+  cpu           : CPU_MEM_COPY -- N worker lcores copy with the CPU (no
+                  dmadev). On-platform DPDK baseline when no offload engine
+                  is present.
 """
 from __future__ import annotations
 
@@ -26,16 +27,20 @@ class DmaPerf(AcceleratorPlugin):
     implemented = True
 
     def prepare(self, cfg: dict, accel_cfg: dict) -> str:
+        if accel_cfg.get("mode", "dma") == "cpu":
+            return "dpdk-test-dma-perf CPU_MEM_COPY (software, no dmadev)"
         bdf = accel_cfg.get("bdf", "")
         return f"dma-perf on {accel_cfg.get('dpdk_driver', 'dmadev')} {bdf}"
 
     def _lcore_dma(self, cfg: dict, accel_cfg: dict, threads: int) -> str:
-        base = int(cfg.get("CTRL_LCORE", "1"))
+        base = int(cfg.get("CTRL_LCORE", "8"))
         bdf = accel_cfg.get("bdf", "0000:00:04.1")
-        devargs = accel_cfg.get("devargs", "")
-        dev = f"{bdf}{(',' + devargs) if devargs else ''}"
-        entries = [f"lcore{base + 1 + i}@{dev}" for i in range(threads)]
-        return ", ".join(entries)
+        # New dma-perf format: one lcore_dmaN= line per worker channel.
+        lines = []
+        for i in range(threads):
+            lines.append(
+                f"lcore_dma{i}=lcore={base + 1 + i},dev={bdf},dir=mem2mem")
+        return "\n".join(lines)
 
     def build_script(self, cfg: dict, accel_cfg: dict, knobs: dict, threads: int) -> str:
         dpdk = expand_home(cfg["DPDK_DIR"])
@@ -44,20 +49,39 @@ class DmaPerf(AcceleratorPlugin):
         buf = int(knobs.get("op_size", 4096))
         ring = int(knobs.get("ring_size", 1024))
         secs = int(knobs.get("duration_sec", 30))
-        lcore_dma = self._lcore_dma(cfg, accel_cfg, threads)
-        ini = f"""[case1]
+        numa = int(accel_cfg.get("numa_node", cfg.get("BENCH_NUMA", "0")))
+        main = int(cfg.get("CTRL_LCORE", "8"))
+        workers = [main + 1 + i for i in range(threads)]
+        wlist = ",".join(str(w) for w in workers)
+        if accel_cfg.get("mode", "dma") == "cpu":
+            # CPU_MEM_COPY: worker lcores copy with the CPU; no dmadev device.
+            eal = f"-l {main},{wlist} --in-memory --no-pci --file-prefix=cpucopy"
+            case = f"""[case1]
+type=CPU_MEM_COPY
+mem_size=10
+buf_size={buf}
+src_numa_node={numa}
+dst_numa_node={numa}
+lcore={wlist}
+"""
+        else:
+            eal = f"-l {main},{wlist} --in-memory --file-prefix=dmaperf"
+            case = f"""[case1]
 type=DMA_MEM_COPY
 mem_size=10
 buf_size={buf}
 dma_ring_size={ring}
 kick_batch=32
-src_numa_node=0
-dst_numa_node=0
+src_numa_node={numa}
+dst_numa_node={numa}
+{self._lcore_dma(cfg, accel_cfg, threads)}
+"""
+        ini = f"""[GLOBAL]
+eal_args={eal}
 cache_flush=0
 test_seconds={secs}
-lcore_dma={lcore_dma}
-eal_args=--in-memory --file-prefix=dmaperf
-"""
+
+{case}"""
         cfg_path = f"/tmp/dma_perf_{threads}.ini"
         res_path = f"/tmp/dma_perf_{threads}_result.csv"
         return f"""#!/bin/bash
@@ -69,11 +93,34 @@ cat {res_path} 2>/dev/null || echo NO_RESULT
 """
 
     def parse(self, raw_log: str) -> dict:
-        metrics = {"throughput_gbps": 0.0, "ops_per_sec": 0.0, "latency_us_avg": 0.0, "latency_us_p99": 0.0}
-        # dma-perf result CSV/header carries an average throughput in Gbps.
-        m = re.search(r"Average\s+Throughput.*?([\d.]+)", raw_log, re.I)
-        if not m:
-            m = re.search(r"throughput.*?Gbps[^\d]*([\d.]+)", raw_log, re.I)
+        metrics = {"throughput_gbps": 0.0, "ops_per_sec": 0.0,
+                   "latency_us_avg": 0.0, "latency_us_p99": 0.0}
+
+        # Aggregate bandwidth across workers: prefer the "Total Bandwidth"
+        # line, then fall back to the CSV "Summary" row (Gbps is the
+        # second-to-last column, MOps the last).
+        m = re.search(r"Total Bandwidth:\s*([\d.]+)", raw_log, re.I)
         if m:
             metrics["throughput_gbps"] = float(m.group(1))
+        mo = re.search(r"Total MOps:\s*([\d.]+)", raw_log, re.I)
+        if mo:
+            metrics["ops_per_sec"] = round(float(mo.group(1)) * 1e6, 2)
+
+        if metrics["throughput_gbps"] == 0.0:
+            for line in raw_log.splitlines():
+                if "Summary" in line and "," in line:
+                    cols = [c.strip() for c in line.split(",") if c.strip()]
+                    nums = [c for c in cols if re.fullmatch(r"[\d.]+", c)]
+                    if len(nums) >= 2:
+                        metrics["throughput_gbps"] = float(nums[-2])
+                        metrics["ops_per_sec"] = round(float(nums[-1]) * 1e6, 2)
+
+        # Latency per op from average cycles/op and the reported CPU frequency.
+        cyc = re.search(r"Cycles/op per worker:\s*([\d.]+)", raw_log, re.I)
+        freq = re.search(r"Frequency:\s*([\d.]+)\s*Ghz", raw_log, re.I)
+        if not freq:
+            freq = re.search(r"CPU frequency,\s*([\d.]+)", raw_log, re.I)
+        if cyc and freq and float(freq.group(1)) > 0:
+            metrics["latency_us_avg"] = round(
+                float(cyc.group(1)) / (float(freq.group(1)) * 1000.0), 4)
         return metrics
